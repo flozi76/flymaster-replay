@@ -272,28 +272,51 @@ async function loadIGCFiles(files) {
 }
 
 /* ── Flymaster live group loading ──────────────────────────── */
-async function loadFlymasterGroup(urlOrId, token = '') {
+async function loadFlymasterGroup(urlOrId, manualToken = '') {
   const groupId = FlymasterClient.parseGroupId(urlOrId);
   if (!groupId) {
     setStatus('Could not parse group ID from that input.', 'error');
     return;
   }
 
+  // Auto-extract a token embedded in the group URL (e.g. ?token=abc123),
+  // falling back to the manually entered token.
+  const urlToken = FlymasterClient.parseGroupToken(urlOrId);
+  const token = manualToken || urlToken || '';
+
+  // If a token was auto-extracted from the URL, fill in the token field so
+  // the user can see it (and re-use it on the next load).
+  if (urlToken && !manualToken) {
+    const tokenInput = qs('#group-token');
+    if (tokenInput) tokenInput.value = urlToken;
+  }
+
   setStatus('Connecting to Flymaster…');
   qs('#btn-load-group').disabled = true;
 
   try {
-    // 1 – Pilot list
+    // 1 – Server time (used to synchronise track lookback with Flymaster clock)
+    setStatus('Fetching server time…');
+    let serverTime;
+    try {
+      serverTime = await FlymasterClient.getServerTime(groupId);
+    } catch {
+      // Fall back to local clock if the time endpoint fails
+      serverTime = Math.floor(Date.now() / 1000);
+    }
+
+    // 2 – Pilot list
     setStatus('Fetching pilot list…');
     const pilotList = await FlymasterClient.getPilots(groupId);
     if (!pilotList.length) {
       setStatus('No pilots found in this group.', 'error');
       return;
     }
-    setStatus(`Found ${pilotList.length} pilots — fetching tracks…`);
+    setStatus(`Found ${pilotList.length} pilot${pilotList.length !== 1 ? 's' : ''} — fetching tracks…`);
 
-    // 2 – Track data: look back 48 h so yesterday's events are covered too
-    const from48h = Math.floor(Date.now() / 1000) - 48 * 3600;
+    // 3 – Track data: look back 48 h from server time so yesterday's events
+    //     are covered too, and the lookback is synchronised with the server clock.
+    const from48h = serverTime - 48 * 3600;
 
     const tracks = await FlymasterClient.tryGetLiveData(groupId, pilotList, from48h, token);
 
