@@ -312,14 +312,11 @@ async function loadFlymasterGroup(urlOrId, manualToken = '') {
       setStatus('No pilots found in this group.', 'error');
       return;
     }
-    if (!token) {
-      setStatus(
-        `Found ${pilotList.length} pilot${pilotList.length !== 1 ? 's' : ''} — fetching tracks…\n` +
-        `⚠ No token detected – paste the full Flymaster URL (with ?token=…) for best results.`,
-      );
-    } else {
-      setStatus(`Found ${pilotList.length} pilot${pilotList.length !== 1 ? 's' : ''} — fetching tracks…`);
-    }
+    const pilotLabel = `${pilotList.length} pilot${pilotList.length !== 1 ? 's' : ''}`;
+    setStatus(
+      `Found ${pilotLabel} — fetching tracks…` +
+      (token ? '' : ' ⚠ no token'),
+    );
 
     // 3 – Track data: look back 48 h from server time so yesterday's events
     //     are covered too, and the lookback is synchronised with the server clock.

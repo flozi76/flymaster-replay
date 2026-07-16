@@ -1,8 +1,8 @@
-const test   = require('node:test');
+const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs     = require('node:fs');
-const path   = require('node:path');
-const vm     = require('node:vm');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
 
 class ElementMock {
   constructor() {
@@ -153,7 +153,7 @@ test('app bootstraps and loads a Flymaster group track', async () => {
   assert.equal(elements['btn-load-group'].disabled, false);
 });
 
-test('app shows token warning in status when loading without a token', async () => {
+test('app shows token warning when loading without a token', async () => {
   const statusHistory = [];
   const { elements, domReadyHandlers } = makeAppContext();
 
