@@ -82,7 +82,8 @@ h1 {
   color: var(--muted);
 }
 
-#group-url {
+#group-url,
+#group-token {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -91,9 +92,15 @@ h1 {
   padding: 8px 10px;
   width: 100%;
 }
-#group-url:focus {
+#group-url:focus,
+#group-token:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.field-optional {
+  color: var(--muted);
+  font-style: italic;
 }
 
 .primary-btn {

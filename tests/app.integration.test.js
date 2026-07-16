@@ -64,8 +64,10 @@ test('app bootstraps and loads a Flymaster group track', async () => {
     'time-display': new ElementMock(),
     'drop-zone': new ElementMock(),
     'file-input': new ElementMock(),
+    'group-token': new ElementMock(),
   };
   elements['group-url'].value = 'https://lt.flymaster.net/bs.php?grp=7784';
+  elements['group-token'].value = '';
 
   let mapInitCount = 0;
 

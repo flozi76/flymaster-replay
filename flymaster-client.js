@@ -175,15 +175,41 @@ const FlymasterClient = (() => {
   }
 
   /**
-   * Try live data; if the token-free call fails fall back to an empty result.
-   * Used for browsable (public) groups.
+   * Try live data with multiple fallback strategies:
+   *  1. With the provided token (if any) and the given fromTime.
+   *  2. Without a token (public access) and the given fromTime.
+   *  3. With/without token but a 48-hour wider window, in case the event
+   *     started the day before the fromTime boundary.
+   * Returns { serial → fixes[] } or {} when all strategies fail.
    */
-  async function tryGetLiveData(groupId, pilots, fromTime) {
-    try {
-      return await getLiveData(groupId, pilots, fromTime);
-    } catch {
-      return {};
+  async function tryGetLiveData(groupId, pilots, fromTime, token = '') {
+    /** Returns true when at least one pilot has ≥ 2 fixes (replayable). */
+    function hasReplayableTracks(tracks) {
+      return Object.values(tracks).some(fixes => fixes.length >= 2);
     }
+
+    // Strategy 1 – with token (skipped if no token provided)
+    if (token) {
+      try {
+        const tracks = await getLiveData(groupId, pilots, fromTime, token);
+        if (hasReplayableTracks(tracks)) return tracks;
+      } catch { /* fall through */ }
+    }
+
+    // Strategy 2 – without token (public access)
+    try {
+      const tracks = await getLiveData(groupId, pilots, fromTime);
+      if (hasReplayableTracks(tracks)) return tracks;
+    } catch { /* fall through */ }
+
+    // Strategy 3 – wider 48-hour window in case the event started yesterday
+    const from48h = fromTime - 48 * 3600;
+    try {
+      const tracks = await getLiveData(groupId, pilots, from48h, token);
+      if (hasReplayableTracks(tracks)) return tracks;
+    } catch { /* fall through */ }
+
+    return {};
   }
 
   return { parseGroupId, proxyType, getServerTime, getPilots, getLiveData, tryGetLiveData };

@@ -272,7 +272,7 @@ async function loadIGCFiles(files) {
 }
 
 /* ── Flymaster live group loading ──────────────────────────── */
-async function loadFlymasterGroup(urlOrId) {
+async function loadFlymasterGroup(urlOrId, token = '') {
   const groupId = FlymasterClient.parseGroupId(urlOrId);
   if (!groupId) {
     setStatus('Could not parse group ID from that input.', 'error');
@@ -292,14 +292,10 @@ async function loadFlymasterGroup(urlOrId) {
     }
     setStatus(`Found ${pilotList.length} pilots — fetching tracks…`);
 
-    // 2 – Track data (from start of today UTC)
-    const todayStart = Math.floor(Date.UTC(
-      new Date().getUTCFullYear(),
-      new Date().getUTCMonth(),
-      new Date().getUTCDate(),
-    ) / 1000);
+    // 2 – Track data: look back 48 h so yesterday's events are covered too
+    const from48h = Math.floor(Date.now() / 1000) - 48 * 3600;
 
-    const tracks = await FlymasterClient.tryGetLiveData(groupId, pilotList, todayStart);
+    const tracks = await FlymasterClient.tryGetLiveData(groupId, pilotList, from48h, token);
 
     const startIndex = pilots.length;
     let added = 0;
@@ -317,8 +313,8 @@ async function loadFlymasterGroup(urlOrId) {
 
     if (added === 0) {
       setStatus(
-        `Pilots loaded but no track data available yet.\n` +
-        `This is normal for public groups without a token.\n` +
+        `Pilots loaded but no track data found.\n` +
+        `If this is a private group, enter the access token above.\n` +
         `For full replay, download IGC files from the group page and upload them here.`,
         'error',
       );
@@ -393,7 +389,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Flymaster group
   qs('#btn-load-group').addEventListener('click', () => {
-    loadFlymasterGroup(qs('#group-url').value);
+    const token = (qs('#group-token').value || '').trim();
+    loadFlymasterGroup(qs('#group-url').value, token);
   });
 
   // Playback controls
