@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  flymaster-replay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: flymaster-replay:latest
+    container_name: flymaster-replay
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    # Mount the source directory for live development
+    # Comment out the volume block when building for production
+    volumes:
+      - .:/usr/share/nginx/html:ro
