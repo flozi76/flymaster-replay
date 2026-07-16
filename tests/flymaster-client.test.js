@@ -191,6 +191,112 @@ test('getLiveData parses fix fields correctly', async () => {
   assert.equal(fix.time,   1700000100);
 });
 
+test('getLiveData parses string-valued fix fields (real API format)', async () => {
+  // The real Flymaster API returns most fix fields as strings, not numbers.
+  // Confirmed from vicb/flyXC fixture data.
+  const rawResponse = {
+    '5518': [
+      { d: 1615411121, ai: '2850474', oi: '-7319830', h: '846', c: '841', s: '493', b: '36', v: '31' },
+      { d: 1615411122, ai: '2850477', oi: '-7319826', h: '847', c: '841', s: '531', b: '30', v: '27' },
+    ],
+  };
+
+  const { client } = makeClient('localhost', async () => ({
+    ok:   true,
+    json: async () => rawResponse,
+  }));
+
+  const pilots = [{ serial: '5518', name: 'Test' }];
+  const tracks = await client.getLiveData('7784', pilots, 0);
+
+  assert.ok(Array.isArray(tracks['5518']), 'track array exists');
+  assert.equal(tracks['5518'].length, 2);
+  const fix = tracks['5518'][0];
+  assert.ok(Math.abs(fix.lat  -  47.5079) < 0.001, `lat ≈ 47.5079 (got ${fix.lat})`);
+  assert.ok(Math.abs(fix.lon  - -121.997) < 0.001, `lon ≈ -121.997 (got ${fix.lon})`);
+  assert.equal(fix.alt,    846);
+  assert.equal(fix.gndAlt, 493);
+  assert.equal(fix.speed,  31);
+  assert.equal(fix.time,   1615411121);
+});
+
+// ── getLiveDataFromLB ───────────────────────────────────────────────────────
+
+test('getLiveDataFromLB parses Layout A (flat d array with sn field)', async () => {
+  // Layout A: { d: [{ sn, ai, oi, h, s, v, d }, ...] }
+  // Using string values for numeric fields (matching real Flymaster API format)
+  const rawResponse = {
+    d: [
+      { sn: '42', ai: '2826000', oi:  '601200', h: '1500', s: '1100', v: '35', d: 1700000100 },
+      { sn: '42', ai: '2826600', oi:  '602400', h: '1510', s: '1110', v: '36', d: 1700000130 },
+      { sn: '99', ai: '2900000', oi:  '700000', h: '1200', s:  '900', v: '40', d: 1700000100 },
+      { sn: '99', ai: '2901000', oi:  '701000', h: '1210', s:  '910', v: '42', d: 1700000130 },
+    ],
+  };
+
+  const { client } = makeClient('localhost', async () => ({
+    ok:   true,
+    json: async () => rawResponse,
+  }));
+
+  const tracks = await client.getLiveDataFromLB('7784', 0);
+
+  assert.ok(Array.isArray(tracks['42']), 'track array for pilot 42');
+  assert.equal(tracks['42'].length, 2);
+  assert.ok(Array.isArray(tracks['99']), 'track array for pilot 99');
+  assert.equal(tracks['99'].length, 2);
+
+  const fix = tracks['42'][0];
+  assert.ok(Math.abs(fix.lat - 47.1) < 0.001, `lat ≈ 47.1 (got ${fix.lat})`);
+  assert.ok(Math.abs(fix.lon - 10.02) < 0.001, `lon ≈ 10.02 (got ${fix.lon})`);
+  assert.equal(fix.time, 1700000100);
+});
+
+test('getLiveDataFromLB parses Layout B (fixes keyed by serial)', async () => {
+  // Layout B: { "<serial>": [{ ai, oi, h, s, v, d }, ...] }
+  const rawResponse = {
+    '42': [
+      { ai: 2826000, oi:  601200, h: 1500, s: 1100, v: 35, d: 1700000100 },
+      { ai: 2826600, oi:  602400, h: 1510, s: 1110, v: 36, d: 1700000130 },
+    ],
+  };
+
+  const { client } = makeClient('localhost', async () => ({
+    ok:   true,
+    json: async () => rawResponse,
+  }));
+
+  const tracks = await client.getLiveDataFromLB('7784', 0);
+
+  assert.ok(Array.isArray(tracks['42']), 'track array for pilot 42');
+  assert.equal(tracks['42'].length, 2);
+  const fix = tracks['42'][0];
+  assert.ok(Math.abs(fix.lat - 47.1) < 0.001, `lat ≈ 47.1`);
+});
+
+test('getLiveDataFromLB routes lb.flymaster.net through correct proxy', async () => {
+  const { client, fetchSpy } = makeClient('localhost', async () => ({
+    ok:   true,
+    json: async () => ({}),
+  }));
+
+  await client.getLiveDataFromLB('7784', 0);
+  assert.equal(fetchSpy.length, 1);
+  assert.match(fetchSpy[0], /^\/api\/lb\//);
+  assert.doesNotMatch(fetchSpy[0], /lt\.flymaster\.net/);
+});
+
+test('getLiveDataFromLB includes token in URL when provided', async () => {
+  const { client, fetchSpy } = makeClient('localhost', async () => ({
+    ok: true, json: async () => ({}),
+  }));
+
+  await client.getLiveDataFromLB('7784', 0, 'secret');
+  assert.ok(fetchSpy.some(url => url.includes('secret')), 'token in URL');
+});
+
+// ── tryGetLiveData (updated strategies) ────────────────────────────────────
+
 test('tryGetLiveData returns empty object when getLiveData fails', async () => {
   const { client } = makeClient('localhost', async () => ({
     ok:     false,
@@ -245,5 +351,30 @@ test('tryGetLiveData falls back to wider time window when today window returns n
 
   const result = await client.tryGetLiveData('7784', [{ serial: '1', name: 'P' }], 1700086400);
   assert.ok(Array.isArray(result['1']), 'tracks found via wider window');
+  assert.equal(result['1'].length, 2);
+});
+
+test('tryGetLiveData falls back to lb server when lt server returns no tracks', async () => {
+  let callCount = 0;
+  const { client } = makeClient('localhost', async url => {
+    callCount++;
+    // lt.flymaster.net calls (strategies 1-3) return empty
+    if (url.includes('/api/lt/')) {
+      return { ok: true, json: async () => ({}) };
+    }
+    // lb.flymaster.net call (lb fallback strategy) returns tracks in Layout A
+    return {
+      ok: true,
+      json: async () => ({
+        d: [
+          { sn: '1', ai: 2826000, oi: 601200, h: 1500, s: 1100, v: 35, d: 1700000100 },
+          { sn: '1', ai: 2826600, oi: 602400, h: 1510, s: 1110, v: 36, d: 1700000130 },
+        ],
+      }),
+    };
+  });
+
+  const result = await client.tryGetLiveData('7784', [{ serial: '1', name: 'P' }], 1700086400);
+  assert.ok(Array.isArray(result['1']), 'tracks found via lb fallback');
   assert.equal(result['1'].length, 2);
 });
