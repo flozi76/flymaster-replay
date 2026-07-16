@@ -175,11 +175,76 @@ const FlymasterClient = (() => {
   }
 
   /**
+   * Alternative track-loading using lb.flymaster.net/getlivedatam.php with
+   * a past fromTime.  The endpoint acts as a polling feed: calling it with a
+   * past 'd' timestamp returns all fixes for the group since that time, which
+   * gives us the full session history needed for replay.
+   *
+   * Two response layouts are handled:
+   *   A) Flat array under 'd' key with per-fix 'sn' (serial):
+   *      { "d": [{ sn, ai, oi, h, s, v, d }, …] }
+   *   B) Fixes keyed by serial number (same layout as getLiveData):
+   *      { "<serial>": [{ ai, oi, h, s, v, d }, …] }
+   *
+   * Returns { serial → [{ time, lat, lon, alt, gndAlt, speed }] }
+   */
+  async function getLiveDataFromLB(groupId, fromTime, token = '') {
+    let url = `${LB}/getlivedatam.php?grp=${groupId}&d=${fromTime}`;
+    if (token) url += `&token=${encodeURIComponent(token)}`;
+
+    const raw = await apiFetch(url);
+    const tracks = {};
+
+    /** Normalise a raw Flymaster fix object into the app's internal format. */
+    function normaliseFix(f) {
+      return {
+        time:   Number(f.d),
+        lat:    Number(f.ai) / 60000,
+        lon:    Number(f.oi) / 60000,
+        alt:    Number(f.h)  || 0,
+        gndAlt: Number(f.s)  || 0,
+        speed:  Number(f.v)  || 0,
+      };
+    }
+
+    // Layout A – flat fix array with a per-fix 'sn' field
+    if (Array.isArray(raw.d)) {
+      for (const fix of raw.d) {
+        if (!fix.sn) continue;
+        const sn = String(fix.sn);
+        if (!tracks[sn]) tracks[sn] = [];
+        tracks[sn].push(normaliseFix(fix));
+      }
+    } else {
+      // Layout B – fixes keyed directly by serial (same as getLiveData)
+      for (const [serial, fixes] of Object.entries(raw)) {
+        if (!Array.isArray(fixes)) continue;
+        tracks[serial] = fixes.map(normaliseFix);
+      }
+    }
+
+    for (const sn of Object.keys(tracks)) {
+      tracks[sn] = tracks[sn]
+        .filter(f => f.lat !== 0 || f.lon !== 0)
+        .sort((a, b) => a.time - b.time);
+    }
+
+    return tracks;
+  }
+
+  /**
    * Try live data with multiple fallback strategies:
+   *
+   * lt.flymaster.net / getLiveData.php strategies:
    *  1. With the provided token (if any) and the given fromTime.
    *  2. Without a token (public access) and the given fromTime.
-   *  3. With/without token but a 48-hour wider window, in case the event
-   *     started the day before the fromTime boundary.
+   *  3. With/without token but a wider window (fromTime − 48 h).
+   *
+   * lb.flymaster.net / getlivedatam.php fallback strategies:
+   *  4. With token and fromTime (skipped if no token).
+   *  5. Without token and fromTime.
+   *  6. Without token and wider window (fromTime − 48 h).
+   *
    * Returns { serial → fixes[] } or {} when all strategies fail.
    */
   async function tryGetLiveData(groupId, pilots, fromTime, token = '') {
@@ -188,6 +253,9 @@ const FlymasterClient = (() => {
       return Object.values(tracks).some(fixes => fixes.length >= 2);
     }
 
+    const widerFrom = fromTime - 48 * 3600;
+
+    // ── lt.flymaster.net strategies (getLiveData.php) ─────────────────────
     // Strategy 1 – with token (skipped if no token provided)
     if (token) {
       try {
@@ -202,15 +270,38 @@ const FlymasterClient = (() => {
       if (hasReplayableTracks(tracks)) return tracks;
     } catch { /* fall through */ }
 
-    // Strategy 3 – wider 48-hour window in case the event started yesterday
-    const from48h = fromTime - 48 * 3600;
+    // Strategy 3 – wider window in case the event started before fromTime
     try {
-      const tracks = await getLiveData(groupId, pilots, from48h, token);
+      const tracks = await getLiveData(groupId, pilots, widerFrom, token);
+      if (hasReplayableTracks(tracks)) return tracks;
+    } catch { /* fall through */ }
+
+    // ── lb.flymaster.net fallback strategies (getlivedatam.php) ──────────
+    // Strategy 4 – lb with token (skipped if no token provided)
+    if (token) {
+      try {
+        const tracks = await getLiveDataFromLB(groupId, fromTime, token);
+        if (hasReplayableTracks(tracks)) return tracks;
+      } catch { /* fall through */ }
+    }
+
+    // Strategy 5 – lb without token
+    try {
+      const tracks = await getLiveDataFromLB(groupId, fromTime);
+      if (hasReplayableTracks(tracks)) return tracks;
+    } catch { /* fall through */ }
+
+    // Strategy 6 – lb without token, wider window
+    try {
+      const tracks = await getLiveDataFromLB(groupId, widerFrom);
       if (hasReplayableTracks(tracks)) return tracks;
     } catch { /* fall through */ }
 
     return {};
   }
 
-  return { parseGroupId, proxyType, getServerTime, getPilots, getLiveData, tryGetLiveData };
+  return {
+    parseGroupId, proxyType, getServerTime, getPilots,
+    getLiveData, getLiveDataFromLB, tryGetLiveData,
+  };
 })();
