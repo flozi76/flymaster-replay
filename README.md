@@ -31,7 +31,7 @@ xdg-open index.html      # Linux
 start index.html         # Windows
 ```
 
-### Option B — Docker (recommended for sharing / deployment)
+### Option B — Docker (recommended for local sharing)
 
 **Requirements:** Docker + Docker Compose
 
@@ -48,6 +48,40 @@ To stop:
 ```bash
 docker compose down
 ```
+
+---
+
+## Free Cloud Deployment
+
+The app is pure static HTML/CSS/JS — no server-side code — so it deploys for free on any static hosting platform.
+
+### GitHub Pages (zero extra accounts)
+
+1. Go to your repository **Settings → Pages**
+2. Under *Source*, select **GitHub Actions**
+3. Push to `main` — the workflow in `.github/workflows/deploy.yml` runs automatically
+4. Your app is live at `https://<your-username>.github.io/<repo-name>/`
+
+### Netlify
+
+1. Log in at [netlify.com](https://netlify.com) and click **Add new site → Import an existing project**
+2. Connect your GitHub repository
+3. Leave the build command blank and set the publish directory to `.`
+4. Click **Deploy** — Netlify picks up `netlify.toml` automatically
+5. Your app gets a free `*.netlify.app` URL (custom domain also free)
+
+### Render
+
+1. Log in at [render.com](https://render.com) and click **New → Static Site**
+2. Connect your GitHub repository
+3. Render reads `render.yaml` and configures everything automatically
+4. Your app gets a free `*.onrender.com` URL
+
+| Platform | URL format | Custom domain | Deploy on push |
+|----------|-----------|--------------|----------------|
+| GitHub Pages | `<user>.github.io/<repo>` | ✅ free | ✅ |
+| Netlify | `<site>.netlify.app` | ✅ free | ✅ |
+| Render | `<site>.onrender.com` | ✅ free | ✅ |
 
 ---
 

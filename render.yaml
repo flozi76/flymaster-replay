@@ -1,0 +1,15 @@
+# Render.com configuration
+# Docs: https://render.com/docs/infrastructure-as-code
+
+services:
+  - type: web
+    name: flymaster-replay
+    runtime: static
+    # No build step — pure static files
+    buildCommand: ""
+    staticPublishPath: .
+    # Fallback to index.html for client-side navigation
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
