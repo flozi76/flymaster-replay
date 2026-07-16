@@ -203,3 +203,47 @@ test('tryGetLiveData returns empty object when getLiveData fails', async () => {
   // avoid cross-realm prototype mismatches with assert.deepEqual.
   assert.equal(JSON.stringify(result), '{}');
 });
+
+test('tryGetLiveData uses token when provided', async () => {
+  const { client, fetchSpy } = makeClient('localhost', async () => ({
+    ok:   true,
+    json: async () => ({
+      '1': [
+        { ai: 2826000, oi: 601200, h: 1500, s: 1100, v: 35, d: 1700000100 },
+        { ai: 2826600, oi: 602400, h: 1510, s: 1110, v: 36, d: 1700000130 },
+      ],
+    }),
+  }));
+
+  const result = await client.tryGetLiveData('7784', [{ serial: '1', name: 'P' }], 0, 'mytoken');
+  // With a token, the first strategy should succeed and return data
+  assert.ok(Array.isArray(result['1']), 'track array returned');
+  assert.equal(result['1'].length, 2);
+  // Token should appear in the fetch URL
+  assert.ok(fetchSpy.some(url => url.includes('mytoken')), 'token included in request URL');
+});
+
+test('tryGetLiveData falls back to wider time window when today window returns no tracks', async () => {
+  let callCount = 0;
+  const { client } = makeClient('localhost', async url => {
+    callCount++;
+    // First call (strategy 2 = given time window) returns no tracks
+    if (callCount <= 1) {
+      return { ok: true, json: async () => ({}) };
+    }
+    // Second call (48h wider window) returns real tracks
+    return {
+      ok: true,
+      json: async () => ({
+        '1': [
+          { ai: 2826000, oi: 601200, h: 1500, s: 1100, v: 35, d: 1700000100 },
+          { ai: 2826600, oi: 602400, h: 1510, s: 1110, v: 36, d: 1700000130 },
+        ],
+      }),
+    };
+  });
+
+  const result = await client.tryGetLiveData('7784', [{ serial: '1', name: 'P' }], 1700086400);
+  assert.ok(Array.isArray(result['1']), 'tracks found via wider window');
+  assert.equal(result['1'].length, 2);
+});
