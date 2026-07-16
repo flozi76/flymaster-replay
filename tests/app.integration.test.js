@@ -99,6 +99,8 @@ test('app bootstraps and loads a Flymaster group track', async () => {
     FileReader: class {},
     FlymasterClient: {
       parseGroupId: () => '7784',
+      parseGroupToken: () => null,
+      getServerTime: async () => Math.floor(Date.now() / 1000),
       getPilots: async () => [{ serial: '123', name: 'Pilot One' }],
       tryGetLiveData: async () => ({
         123: [
@@ -138,6 +140,7 @@ test('app bootstraps and loads a Flymaster group track', async () => {
   assert.equal(mapInitCount, 1);
 
   elements['btn-load-group'].trigger('click');
+  await flush();
   await flush();
   await flush();
 

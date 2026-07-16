@@ -113,6 +113,17 @@ const FlymasterClient = (() => {
     return null;
   }
 
+  /**
+   * Extract an access token embedded in a Flymaster group URL.
+   * e.g. https://lt.flymaster.net/bs.php?grp=7784&token=abc123 → "abc123"
+   * Returns null if no token is present.
+   */
+  function parseGroupToken(input) {
+    if (!input) return null;
+    const m = String(input).trim().match(/[?&]token=([^&\s]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
   /** Current Flymaster server time (Unix seconds). */
   async function getServerTime(groupId) {
     const data = await apiFetch(
@@ -216,8 +227,12 @@ const FlymasterClient = (() => {
         tracks[sn].push(normaliseFix(fix));
       }
     } else {
-      // Layout B – fixes keyed directly by serial (same as getLiveData)
-      for (const [serial, fixes] of Object.entries(raw)) {
+      // Layout B – tracks keyed directly by serial (same as getLiveData).
+      // Also handles Layout C: response wrapped under a 'data' or 'response' key.
+      const payload = (raw.data && typeof raw.data === 'object') ? raw.data
+                    : (raw.response && typeof raw.response === 'object') ? raw.response
+                    : raw;
+      for (const [serial, fixes] of Object.entries(payload)) {
         if (!Array.isArray(fixes)) continue;
         tracks[serial] = fixes.map(normaliseFix);
       }
@@ -242,8 +257,11 @@ const FlymasterClient = (() => {
    *
    * lb.flymaster.net / getlivedatam.php fallback strategies:
    *  4. With token and fromTime (skipped if no token).
+   *  4b.With token and wider window (skipped if no token).
    *  5. Without token and fromTime.
    *  6. Without token and wider window (fromTime − 48 h).
+   *  7. With token and d=0 – requests all available history (skipped if no token).
+   *  8. Without token and d=0 – requests all available history.
    *
    * Returns { serial → fixes[] } or {} when all strategies fail.
    */
@@ -277,10 +295,16 @@ const FlymasterClient = (() => {
     } catch { /* fall through */ }
 
     // ── lb.flymaster.net fallback strategies (getlivedatam.php) ──────────
-    // Strategy 4 – lb with token (skipped if no token provided)
+    // Strategy 4 – lb with token and fromTime (skipped if no token provided)
     if (token) {
       try {
         const tracks = await getLiveDataFromLB(groupId, fromTime, token);
+        if (hasReplayableTracks(tracks)) return tracks;
+      } catch { /* fall through */ }
+
+      // Strategy 4b – lb with token and wider window
+      try {
+        const tracks = await getLiveDataFromLB(groupId, widerFrom, token);
         if (hasReplayableTracks(tracks)) return tracks;
       } catch { /* fall through */ }
     }
@@ -297,11 +321,25 @@ const FlymasterClient = (() => {
       if (hasReplayableTracks(tracks)) return tracks;
     } catch { /* fall through */ }
 
+    // Strategy 7 – lb with token, d=0 (request all available history)
+    if (token) {
+      try {
+        const tracks = await getLiveDataFromLB(groupId, 0, token);
+        if (hasReplayableTracks(tracks)) return tracks;
+      } catch { /* fall through */ }
+    }
+
+    // Strategy 8 – lb without token, d=0 (request all available history)
+    try {
+      const tracks = await getLiveDataFromLB(groupId, 0);
+      if (hasReplayableTracks(tracks)) return tracks;
+    } catch { /* fall through */ }
+
     return {};
   }
 
   return {
-    parseGroupId, proxyType, getServerTime, getPilots,
+    parseGroupId, parseGroupToken, proxyType, getServerTime, getPilots,
     getLiveData, getLiveDataFromLB, tryGetLiveData,
   };
 })();

@@ -71,6 +71,42 @@ test('parseGroupId returns null for invalid input', () => {
   assert.equal(client.parseGroupId(null), null);
 });
 
+// ── parseGroupToken ─────────────────────────────────────────────────────────
+
+test('parseGroupToken extracts token from URL with token param', () => {
+  const { client } = makeClient('localhost');
+  assert.equal(
+    client.parseGroupToken('https://lt.flymaster.net/bs.php?grp=7784&token=abc123'),
+    'abc123',
+  );
+});
+
+test('parseGroupToken extracts token when token appears before grp', () => {
+  const { client } = makeClient('localhost');
+  assert.equal(
+    client.parseGroupToken('https://lt.flymaster.net/bs.php?token=XYZ&grp=7784'),
+    'XYZ',
+  );
+});
+
+test('parseGroupToken returns null when no token in URL', () => {
+  const { client } = makeClient('localhost');
+  assert.equal(
+    client.parseGroupToken('https://lt.flymaster.net/bs.php?grp=7784'),
+    null,
+  );
+  assert.equal(client.parseGroupToken('7784'), null);
+  assert.equal(client.parseGroupToken(null), null);
+});
+
+test('parseGroupToken decodes URL-encoded token values', () => {
+  const { client } = makeClient('localhost');
+  assert.equal(
+    client.parseGroupToken('https://lt.flymaster.net/bs.php?grp=7784&token=hello%20world'),
+    'hello world',
+  );
+});
+
 // ── proxyType ───────────────────────────────────────────────────────────────
 
 test('proxyType returns "netlify" on .netlify.app hostname', () => {
@@ -377,4 +413,102 @@ test('tryGetLiveData falls back to lb server when lt server returns no tracks', 
   const result = await client.tryGetLiveData('7784', [{ serial: '1', name: 'P' }], 1700086400);
   assert.ok(Array.isArray(result['1']), 'tracks found via lb fallback');
   assert.equal(result['1'].length, 2);
+});
+
+test('tryGetLiveData with token includes token in lb wider-window strategy (4b)', async () => {
+  const fromTime = 1700086400;
+  const expectedWiderFrom = fromTime - 48 * 3600;
+  let lbCallCount = 0;
+  const { client, fetchSpy } = makeClient('localhost', async url => {
+    // lt calls fail
+    if (url.includes('/api/lt/')) return { ok: true, json: async () => ({}) };
+    // lb calls: first one (fromTime with token) returns empty; second (widerFrom with token) returns tracks
+    lbCallCount++;
+    if (lbCallCount === 1) return { ok: true, json: async () => ({}) };
+    return {
+      ok: true,
+      json: async () => ({
+        '1': [
+          { ai: 2826000, oi: 601200, h: 1500, s: 1100, v: 35, d: 1700000100 },
+          { ai: 2826600, oi: 602400, h: 1510, s: 1110, v: 36, d: 1700000130 },
+        ],
+      }),
+    };
+  });
+
+  const result = await client.tryGetLiveData('7784', [{ serial: '1', name: 'P' }], fromTime, 'mytoken');
+  // Token must appear in at least one lb call
+  assert.ok(
+    fetchSpy.filter(u => u.includes('/api/lb/')).some(u => u.includes('mytoken')),
+    'token used in lb strategy',
+  );
+  // The wider time window must have been used in the second lb call
+  assert.ok(
+    fetchSpy.filter(u => u.includes('/api/lb/')).some(u => u.includes(`d=${expectedWiderFrom}`)),
+    'wider time window used in lb strategy 4b',
+  );
+  assert.ok(Array.isArray(result['1']), 'tracks returned');
+});
+
+test('tryGetLiveData uses d=0 as last resort fallback', async () => {
+  const { client, fetchSpy } = makeClient('localhost', async url => {
+    // All calls return empty until d=0 is tried
+    if (!url.includes('d=0')) return { ok: true, json: async () => ({}) };
+    return {
+      ok: true,
+      json: async () => ({
+        d: [
+          { sn: '1', ai: 2826000, oi: 601200, h: 1500, s: 1100, v: 35, d: 1700000100 },
+          { sn: '1', ai: 2826600, oi: 602400, h: 1510, s: 1110, v: 36, d: 1700000130 },
+        ],
+      }),
+    };
+  });
+
+  const result = await client.tryGetLiveData('7784', [{ serial: '1', name: 'P' }], 1700086400);
+  assert.ok(fetchSpy.some(u => u.includes('d=0')), 'd=0 strategy attempted');
+  assert.ok(Array.isArray(result['1']), 'tracks found via d=0 fallback');
+  assert.equal(result['1'].length, 2);
+});
+
+// ── getLiveDataFromLB Layout C (wrapped response) ───────────────────────────
+
+test('getLiveDataFromLB handles Layout C – tracks wrapped under "data" key', async () => {
+  const rawResponse = {
+    data: {
+      '42': [
+        { ai: 2826000, oi: 601200, h: 1500, s: 1100, v: 35, d: 1700000100 },
+        { ai: 2826600, oi: 602400, h: 1510, s: 1110, v: 36, d: 1700000130 },
+      ],
+    },
+  };
+
+  const { client } = makeClient('localhost', async () => ({
+    ok:   true,
+    json: async () => rawResponse,
+  }));
+
+  const tracks = await client.getLiveDataFromLB('7784', 0);
+  assert.ok(Array.isArray(tracks['42']), 'track array under "data" wrapper');
+  assert.equal(tracks['42'].length, 2);
+});
+
+test('getLiveDataFromLB handles Layout C – tracks wrapped under "response" key', async () => {
+  const rawResponse = {
+    response: {
+      '42': [
+        { ai: 2826000, oi: 601200, h: 1500, s: 1100, v: 35, d: 1700000100 },
+        { ai: 2826600, oi: 602400, h: 1510, s: 1110, v: 36, d: 1700000130 },
+      ],
+    },
+  };
+
+  const { client } = makeClient('localhost', async () => ({
+    ok:   true,
+    json: async () => rawResponse,
+  }));
+
+  const tracks = await client.getLiveDataFromLB('7784', 0);
+  assert.ok(Array.isArray(tracks['42']), 'track array under "response" wrapper');
+  assert.equal(tracks['42'].length, 2);
 });
