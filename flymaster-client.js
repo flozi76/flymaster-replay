@@ -46,9 +46,10 @@ const FlymasterClient = (() => {
    *   'direct'  – no proxy (browser calls Flymaster directly; may be CORS-blocked)
    *
    * Detection rules (most-specific first):
-   *   • Netlify domains (.netlify.app / .netlify.com) → 'netlify'
-   *   • GitHub Pages (.github.io)                    → 'direct' (no server-side proxy)
-   *   • Everything else (localhost, custom domain)    → 'nginx'  (Docker / self-hosted)
+   *   • Netlify domains (.netlify.app / .netlify.com)   → 'netlify'
+   *   • GitHub Pages (.github.io)                       → 'direct' (no server-side proxy)
+   *   • localhost / 127.0.0.1 (Docker dev)              → 'nginx'
+   *   • Everything else (custom domain, self-hosted)    → 'nginx'
    */
   function proxyType() {
     const h = window.location.hostname;
@@ -56,6 +57,8 @@ const FlymasterClient = (() => {
     // e.g. "evilnetlify.com".endsWith("netlify.com") would match without the dot.
     if (h.endsWith('.netlify.app') || h.endsWith('.netlify.com')) return 'netlify';
     if (h.endsWith('.github.io'))                                  return 'direct';
+    // localhost / 127.0.0.1 → Docker dev; any other hostname → self-hosted nginx.
+    // Both resolve to the same /api/lb/ and /api/lt/ proxy paths.
     return 'nginx';
   }
 
