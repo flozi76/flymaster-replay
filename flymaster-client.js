@@ -227,7 +227,7 @@ const FlymasterClient = (() => {
         tracks[sn].push(normaliseFix(fix));
       }
     } else {
-      // Layout B – fixes keyed directly by serial (same as getLiveData).
+      // Layout B – tracks keyed directly by serial (same as getLiveData).
       // Also handles Layout C: response wrapped under a 'data' or 'response' key.
       const payload = (raw.data && typeof raw.data === 'object') ? raw.data
                     : (raw.response && typeof raw.response === 'object') ? raw.response

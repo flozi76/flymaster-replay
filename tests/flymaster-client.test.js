@@ -416,14 +416,15 @@ test('tryGetLiveData falls back to lb server when lt server returns no tracks', 
 });
 
 test('tryGetLiveData with token includes token in lb wider-window strategy (4b)', async () => {
+  const fromTime = 1700086400;
+  const expectedWiderFrom = fromTime - 48 * 3600;
+  let lbCallCount = 0;
   const { client, fetchSpy } = makeClient('localhost', async url => {
-    // lt calls fail; first lb+token+fromTime also fails; lb+token+widerFrom succeeds
+    // lt calls fail
     if (url.includes('/api/lt/')) return { ok: true, json: async () => ({}) };
-    // First lb call (fromTime with token) — return empty
-    if (!fetchSpy.filter(u => u.includes('/api/lb/')).length) {
-      return { ok: true, json: async () => ({}) };
-    }
-    // Second lb call (widerFrom with token) — return tracks
+    // lb calls: first one (fromTime with token) returns empty; second (widerFrom with token) returns tracks
+    lbCallCount++;
+    if (lbCallCount === 1) return { ok: true, json: async () => ({}) };
     return {
       ok: true,
       json: async () => ({
@@ -435,11 +436,16 @@ test('tryGetLiveData with token includes token in lb wider-window strategy (4b)'
     };
   });
 
-  const result = await client.tryGetLiveData('7784', [{ serial: '1', name: 'P' }], 1700086400, 'mytoken');
+  const result = await client.tryGetLiveData('7784', [{ serial: '1', name: 'P' }], fromTime, 'mytoken');
   // Token must appear in at least one lb call
   assert.ok(
     fetchSpy.filter(u => u.includes('/api/lb/')).some(u => u.includes('mytoken')),
     'token used in lb strategy',
+  );
+  // The wider time window must have been used in the second lb call
+  assert.ok(
+    fetchSpy.filter(u => u.includes('/api/lb/')).some(u => u.includes(`d=${expectedWiderFrom}`)),
+    'wider time window used in lb strategy 4b',
   );
   assert.ok(Array.isArray(result['1']), 'tracks returned');
 });
@@ -467,7 +473,7 @@ test('tryGetLiveData uses d=0 as last resort fallback', async () => {
 
 // ── getLiveDataFromLB Layout C (wrapped response) ───────────────────────────
 
-test('getLiveDataFromLB handles Layout C – fixes wrapped under "data" key', async () => {
+test('getLiveDataFromLB handles Layout C – tracks wrapped under "data" key', async () => {
   const rawResponse = {
     data: {
       '42': [
@@ -487,7 +493,7 @@ test('getLiveDataFromLB handles Layout C – fixes wrapped under "data" key', as
   assert.equal(tracks['42'].length, 2);
 });
 
-test('getLiveDataFromLB handles Layout C – fixes wrapped under "response" key', async () => {
+test('getLiveDataFromLB handles Layout C – tracks wrapped under "response" key', async () => {
   const rawResponse = {
     response: {
       '42': [
