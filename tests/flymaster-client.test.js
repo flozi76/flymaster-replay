@@ -83,9 +83,9 @@ test('proxyType returns "netlify" on .netlify.com hostname', () => {
   assert.equal(client.proxyType(), 'netlify');
 });
 
-test('proxyType returns "direct" on .github.io hostname', () => {
+test('proxyType returns "corsproxy" on .github.io hostname', () => {
   const { client } = makeClient('flozi76.github.io');
-  assert.equal(client.proxyType(), 'direct');
+  assert.equal(client.proxyType(), 'corsproxy');
 });
 
 test('proxyType returns "nginx" on localhost', () => {
@@ -137,7 +137,7 @@ test('nginx deployment (custom domain): apiFetch uses /api/lb/ path', async () =
   assert.match(fetchSpy[0], /^\/api\/lb\//);
 });
 
-test('direct deployment (GitHub Pages): apiFetch calls Flymaster directly', async () => {
+test('corsproxy deployment (GitHub Pages): apiFetch uses corsproxy.io', async () => {
   const { client, fetchSpy } = makeClient('flozi76.github.io');
   try {
     await client.getServerTime('7784');
@@ -145,7 +145,20 @@ test('direct deployment (GitHub Pages): apiFetch calls Flymaster directly', asyn
     // Stub response – ignore assertion error.
   }
   assert.equal(fetchSpy.length, 1);
-  assert.match(fetchSpy[0], /^https:\/\/lb\.flymaster\.net\//);
+  assert.match(fetchSpy[0], /^https:\/\/corsproxy\.io\/\?url=/);
+  assert.match(fetchSpy[0], /lb\.flymaster\.net/);
+});
+
+test('corsproxy deployment (GitHub Pages): lt.flymaster.net also routed via corsproxy', async () => {
+  const pilots = [{ serial: '42', name: 'Test' }];
+  const { client, fetchSpy } = makeClient('flozi76.github.io', async () => ({
+    ok:   true,
+    json: async () => ({}),
+  }));
+  await client.getLiveData('7784', pilots, 0);
+  assert.equal(fetchSpy.length, 1);
+  assert.match(fetchSpy[0], /^https:\/\/corsproxy\.io\/\?url=/);
+  assert.match(fetchSpy[0], /lt\.flymaster\.net/);
 });
 
 // ── getLiveData parsing ─────────────────────────────────────────────────────

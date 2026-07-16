@@ -329,8 +329,7 @@ async function loadFlymasterGroup(urlOrId) {
   } catch (err) {
     setStatus(
       `Failed: ${err.message}\n` +
-      `CORS may be blocking direct API calls. ` +
-      `Deploy on Netlify (free) to use the server-side proxy, ` +
+      `Check your network connection and try again, ` +
       `or upload IGC files directly.`,
       'error',
     );
