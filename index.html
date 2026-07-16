@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🪂 Flymaster Replay</title>
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── Sidebar ─────────────────────────────────────────────── -->
+    <aside id="sidebar">
+      <h1>🪂 Flymaster Replay</h1>
+
+      <!-- Source tabs -->
+      <div id="source-tabs">
+        <button class="tab-btn active" data-tab="live">🔴 Live Group</button>
+        <button class="tab-btn"        data-tab="igc" >📁 IGC Files</button>
+      </div>
+
+      <!-- Live-group panel -->
+      <div id="tab-live" class="tab-panel active">
+        <label class="field-label" for="group-url">Flymaster group URL or ID</label>
+        <input id="group-url" type="text"
+               placeholder="https://lt.flymaster.net/bs.php?grp=7784"
+               value="https://lt.flymaster.net/bs.php?grp=7784" />
+        <button id="btn-load-group" class="primary-btn">Load Group</button>
+        <p id="live-status" class="status-msg" aria-live="polite"></p>
+        <p class="hint">
+          Loads pilot list &amp; recent tracks.<br>
+          For full-day replay upload IGC files ↗
+        </p>
+      </div>
+
+      <!-- IGC-upload panel -->
+      <div id="tab-igc" class="tab-panel">
+        <div id="drop-zone" role="button" tabindex="0"
+             aria-label="Upload IGC files">
+          <span>Drop IGC files here<br>or click to select</span>
+          <input id="file-input" type="file"
+                 accept=".igc,.IGC" multiple aria-hidden="true" />
+        </div>
+      </div>
+
+      <!-- Pilot list -->
+      <div id="pilot-section">
+        <div id="pilot-header">
+          <span id="pilot-count"></span>
+          <button id="btn-clear" style="display:none">✕ Clear all</button>
+        </div>
+        <ul id="pilot-list" aria-label="Pilot list"></ul>
+      </div>
+    </aside>
+
+    <!-- ── Map + playback controls ───────────────────────────── -->
+    <main id="map-container">
+      <div id="map"></div>
+
+      <div id="controls">
+        <span id="time-display" aria-label="Current replay time">--:--:-- UTC</span>
+
+        <input id="time-slider" type="range"
+               min="0" max="1000" value="0"
+               aria-label="Timeline" />
+
+        <div id="control-buttons">
+          <button id="btn-rewind" title="Rewind to start">⏮</button>
+          <button id="btn-play"   title="Play">▶</button>
+          <button id="btn-pause"  title="Pause" style="display:none">⏸</button>
+          <label>
+            Speed
+            <select id="speed-select" aria-label="Playback speed">
+              <option value="1">1×</option>
+              <option value="2">2×</option>
+              <option value="5">5×</option>
+              <option value="10" selected>10×</option>
+              <option value="30">30×</option>
+              <option value="60">60×</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </main>
+
+  </div><!-- #app -->
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
+  <script src="igc-parser.js"></script>
+  <script src="flymaster-client.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

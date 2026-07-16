@@ -4,6 +4,8 @@
 [build]
   # Publish the repo root (no build step needed — pure static files)
   publish = "."
+  # Serverless functions directory
+  functions = "netlify/functions"
 
 # Redirect all routes to index.html so client-side navigation works
 [[redirects]]
