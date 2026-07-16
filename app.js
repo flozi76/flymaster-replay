@@ -321,8 +321,12 @@ async function loadFlymasterGroup(urlOrId, manualToken = '') {
     // 3 – Track data: look back 48 h from server time so yesterday's events
     //     are covered too, and the lookback is synchronised with the server clock.
     const from48h = serverTime - 48 * 3600;
+    const lt360Window = typeof FlymasterClient.parseLiveTrack360Window === 'function'
+      ? FlymasterClient.parseLiveTrack360Window(urlOrId)
+      : null;
+    const fromTime = lt360Window ? Math.min(from48h, lt360Window.fromTime) : from48h;
 
-    const tracks = await FlymasterClient.tryGetLiveData(groupId, pilotList, from48h, token);
+    const tracks = await FlymasterClient.tryGetLiveData(groupId, pilotList, fromTime, token);
 
     const startIndex = pilots.length;
     let added = 0;

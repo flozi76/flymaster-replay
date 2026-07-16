@@ -59,6 +59,14 @@ test('parseGroupId extracts id from full Flymaster URL', () => {
   );
 });
 
+test('parseGroupId extracts id from LiveTrack360 URL', () => {
+  const { client } = makeClient('localhost');
+  assert.equal(
+    client.parseGroupId('https://livetrack360.com/livetracking/2d/7784/837424800/837511500'),
+    '7784',
+  );
+});
+
 test('parseGroupId accepts a bare numeric id', () => {
   const { client } = makeClient('localhost');
   assert.equal(client.parseGroupId('12345'), '12345');
@@ -105,6 +113,22 @@ test('parseGroupToken decodes URL-encoded token values', () => {
     client.parseGroupToken('https://lt.flymaster.net/bs.php?grp=7784&token=hello%20world'),
     'hello world',
   );
+});
+
+test('parseLiveTrack360Window parses LiveTrack360 timestamps to Unix seconds', () => {
+  const { client } = makeClient('localhost');
+  const range = client.parseLiveTrack360Window(
+    'https://livetrack360.com/livetracking/2d/7784/837424800/837511500',
+  );
+  assert.equal(range.fromTime, 1784109600);
+  assert.equal(range.toTime, 1784196300);
+});
+
+test('parseLiveTrack360Window returns null for non-LiveTrack360 inputs', () => {
+  const { client } = makeClient('localhost');
+  assert.equal(client.parseLiveTrack360Window('https://lt.flymaster.net/bs.php?grp=7784'), null);
+  assert.equal(client.parseLiveTrack360Window('7784'), null);
+  assert.equal(client.parseLiveTrack360Window(null), null);
 });
 
 // ── proxyType ───────────────────────────────────────────────────────────────

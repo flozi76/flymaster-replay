@@ -192,3 +192,31 @@ test('app shows token-requirement guidance when no track data is found', async (
   assert.match(status, /no track data/i, 'should mention "no track data"');
   assert.match(status, /token/i, 'should mention "token" as the fix');
 });
+
+test('app uses LiveTrack360 window as fallback lookback when available', async () => {
+  let usedFromTime = null;
+  const { elements, domReadyHandlers } = makeAppContext({
+    parseLiveTrack360Window: () => ({ fromTime: 1700000000, toTime: 1700086400 }),
+    getServerTime: async () => 1700500000,
+    tryGetLiveData: async (_groupId, _pilots, fromTime) => {
+      usedFromTime = fromTime;
+      return {
+        123: [
+          { time: 1700000100, lat: 47.1, lon: 10.1, alt: 1200 },
+          { time: 1700000200, lat: 47.2, lon: 10.2, alt: 1250 },
+        ],
+      };
+    },
+  });
+
+  elements['group-url'].value = 'https://livetrack360.com/livetracking/2d/7784/837424800/837511500';
+  domReadyHandlers[0]();
+  elements['btn-load-group'].trigger('click');
+  // loadFlymasterGroup performs multiple awaited steps (time, pilots, tracks),
+  // so we flush the microtask queue for each step.
+  await flush();
+  await flush();
+  await flush();
+
+  assert.equal(usedFromTime, 1700000000, 'should use earlier LiveTrack360 window start');
+});

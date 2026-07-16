@@ -104,13 +104,41 @@ const FlymasterClient = (() => {
     return resp.json();
   }
 
-  /** Parse a group URL like https://lt.flymaster.net/bs.php?grp=7784 → "7784" */
+  /**
+   * Parse a group identifier from supported URL formats, e.g.:
+   *   https://lt.flymaster.net/bs.php?grp=7784
+   *   https://livetrack360.com/livetracking/2d/7784/837424800/837511500
+   *   7784
+   */
   function parseGroupId(input) {
     if (!input) return null;
-    const m = String(input).trim().match(/[?&]grp=(\d+)/);
+    const value = String(input).trim();
+    const m = value.match(/[?&]grp=(\d+)/);
     if (m) return m[1];
-    if (/^\d+$/.test(input.trim())) return input.trim();
+    const lt360 = value.match(/\/livetracking\/(?:2d|3d)\/(\d+)(?:\/|$)/i);
+    if (lt360) return lt360[1];
+    if (/^\d+$/.test(value)) return value;
     return null;
+  }
+
+  /**
+   * Parse a LiveTrack360 URL time window.
+   * LiveTrack360 encodes timestamps as seconds since 2000-01-01 UTC.
+   * Example: /livetracking/2d/7784/837424800/837511500
+   * Returns { fromTime, toTime } in Unix seconds, or null.
+   */
+  function parseLiveTrack360Window(input) {
+    if (!input) return null;
+    const m = String(input).trim().match(
+      /\/livetracking\/(?:2d|3d)\/\d+\/(\d+)\/(\d+)(?:\/|$)/i,
+    );
+    if (!m) return null;
+
+    const y2kEpochOffset = 946684800; // seconds between 1970-01-01 and 2000-01-01
+    const fromTime = Number(m[1]) + y2kEpochOffset;
+    const toTime = Number(m[2]) + y2kEpochOffset;
+    if (!Number.isFinite(fromTime) || !Number.isFinite(toTime)) return null;
+    return { fromTime, toTime };
   }
 
   /**
@@ -340,6 +368,6 @@ const FlymasterClient = (() => {
 
   return {
     parseGroupId, parseGroupToken, proxyType, getServerTime, getPilots,
-    getLiveData, getLiveDataFromLB, tryGetLiveData,
+    parseLiveTrack360Window, getLiveData, getLiveDataFromLB, tryGetLiveData,
   };
 })();
