@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const vm = require('node:vm');
 
 class ElementMock {
@@ -42,7 +43,7 @@ function flush() {
 
 test('app bootstraps and loads a Flymaster group track', async () => {
   const source = fs.readFileSync(
-    '/home/runner/work/flymaster-replay/flymaster-replay/app.js',
+    path.resolve(__dirname, '..', 'app.js'),
     'utf8',
   );
 
@@ -85,9 +86,7 @@ test('app bootstraps and loads a Flymaster group track', async () => {
         if (!selector.startsWith('#')) return null;
         return elements[selector.slice(1)] ?? null;
       },
-      querySelectorAll: selector => (
-        selector === '.tab-btn' || selector === '.tab-panel' ? [] : []
-      ),
+      querySelectorAll: () => [],
       addEventListener: (type, fn) => {
         if (type === 'DOMContentLoaded') domReadyHandlers.push(fn);
       },
