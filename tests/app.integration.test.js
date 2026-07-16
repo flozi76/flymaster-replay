@@ -212,6 +212,8 @@ test('app uses LiveTrack360 window as fallback lookback when available', async (
   elements['group-url'].value = 'https://livetrack360.com/livetracking/2d/7784/837424800/837511500';
   domReadyHandlers[0]();
   elements['btn-load-group'].trigger('click');
+  // loadFlymasterGroup performs multiple awaited steps (time, pilots, tracks),
+  // so we flush the microtask queue for each step.
   await flush();
   await flush();
   await flush();
