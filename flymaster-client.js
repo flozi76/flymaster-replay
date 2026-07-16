@@ -4,13 +4,12 @@
  * Flymaster LiveTracking API client.
  *
  * All API calls go through a server-side proxy when available, bypassing CORS.
- * Three proxy strategies are supported (see proxyType()):
- *   netlify – Netlify serverless function (/.netlify/functions/flymaster-proxy)
- *   nginx   – nginx reverse proxy  (/api/lb/ → lb.flymaster.net,
- *                                   /api/lt/ → lt.flymaster.net)
- *   direct  – browser calls Flymaster directly (GitHub Pages; may be CORS-blocked)
- * When running locally or on GitHub Pages the client tries direct calls;
- * most browsers will block these due to CORS on lb/lt.flymaster.net.
+ * Four proxy strategies are supported (see proxyType()):
+ *   netlify   – Netlify serverless function (/.netlify/functions/flymaster-proxy)
+ *   nginx     – nginx reverse proxy  (/api/lb/ → lb.flymaster.net,
+ *                                    /api/lt/ → lt.flymaster.net)
+ *   corsproxy – public corsproxy.io CORS proxy (GitHub Pages static hosting)
+ *   direct    – browser calls Flymaster directly (fallback; CORS errors expected)
  *
  * Confirmed endpoints (reverse-engineered):
  *   lb.flymaster.net/time.php            → { st: <unix_s> }
@@ -39,15 +38,24 @@ const FlymasterClient = (() => {
   const NGINX_LB = '/api/lb';
   const NGINX_LT = '/api/lt';
 
+  // Public CORS proxy used on GitHub Pages (no server-side code available).
+  // corsproxy.io is open-source (https://github.com/Rob--W/cors-anywhere) and
+  // free. Note: all proxied requests pass through this third-party service;
+  // only public, non-sensitive Flymaster flight-tracking data is sent.
+  // Users who need full data privacy should deploy on Netlify or with Docker
+  // (both include a self-hosted server-side proxy).
+  const CORS_PROXY = 'https://corsproxy.io/?url=';
+
   /**
    * Determine which proxy strategy to use for the current deployment:
-   *   'netlify' – Netlify serverless function (/.netlify/functions/flymaster-proxy)
-   *   'nginx'   – nginx reverse proxy (/api/lb/, /api/lt/)
-   *   'direct'  – no proxy (browser calls Flymaster directly; may be CORS-blocked)
+   *   'netlify'   – Netlify serverless function (/.netlify/functions/flymaster-proxy)
+   *   'nginx'     – nginx reverse proxy (/api/lb/, /api/lt/)
+   *   'corsproxy' – public corsproxy.io CORS proxy (GitHub Pages)
+   *   'direct'    – no proxy (browser calls Flymaster directly; CORS errors expected)
    *
    * Detection rules (most-specific first):
    *   • Netlify domains (.netlify.app / .netlify.com)   → 'netlify'
-   *   • GitHub Pages (.github.io)                       → 'direct' (no server-side proxy)
+   *   • GitHub Pages (.github.io)                       → 'corsproxy'
    *   • localhost / 127.0.0.1 (Docker dev)              → 'nginx'
    *   • Everything else (custom domain, self-hosted)    → 'nginx'
    */
@@ -56,7 +64,7 @@ const FlymasterClient = (() => {
     // Anchor to full domain boundary (leading dot) to prevent prefix spoofing
     // e.g. "evilnetlify.com".endsWith("netlify.com") would match without the dot.
     if (h.endsWith('.netlify.app') || h.endsWith('.netlify.com')) return 'netlify';
-    if (h.endsWith('.github.io'))                                  return 'direct';
+    if (h.endsWith('.github.io'))                                  return 'corsproxy';
     // localhost / 127.0.0.1 → Docker dev; any other hostname → self-hosted nginx.
     // Both resolve to the same /api/lb/ and /api/lt/ proxy paths.
     return 'nginx';
@@ -68,6 +76,8 @@ const FlymasterClient = (() => {
 
     if (pt === 'netlify') {
       target = `${NETLIFY_PROXY}?url=${encodeURIComponent(url)}`;
+    } else if (pt === 'corsproxy') {
+      target = `${CORS_PROXY}${encodeURIComponent(url)}`;
     } else if (pt === 'nginx') {
       // Use URL origin comparison (not startsWith) so that a host like
       // lb.flymaster.net.evil.com is never matched.
@@ -84,7 +94,7 @@ const FlymasterClient = (() => {
         target = url;  // malformed URL – fall through to direct
       }
     } else {
-      target = url;
+      target = url;  // 'direct' – no proxy
     }
 
     const resp = await fetch(target, {
