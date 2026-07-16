@@ -416,4 +416,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
   qs('#btn-clear').addEventListener('click', clearAll);
 });
-});
