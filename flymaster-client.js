@@ -39,7 +39,11 @@ const FlymasterClient = (() => {
   const NGINX_LT = '/api/lt';
 
   // Public CORS proxy used on GitHub Pages (no server-side code available).
-  // corsproxy.io is open-source, free, and adds the required CORS headers.
+  // corsproxy.io is open-source (https://github.com/Rob--W/cors-anywhere) and
+  // free. Note: all proxied requests pass through this third-party service;
+  // only public, non-sensitive Flymaster flight-tracking data is sent.
+  // Users who need full data privacy should deploy on Netlify or with Docker
+  // (both include a self-hosted server-side proxy).
   const CORS_PROXY = 'https://corsproxy.io/?url=';
 
   /**
