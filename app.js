@@ -312,7 +312,14 @@ async function loadFlymasterGroup(urlOrId, manualToken = '') {
       setStatus('No pilots found in this group.', 'error');
       return;
     }
-    setStatus(`Found ${pilotList.length} pilot${pilotList.length !== 1 ? 's' : ''} — fetching tracks…`);
+    if (!token) {
+      setStatus(
+        `Found ${pilotList.length} pilot${pilotList.length !== 1 ? 's' : ''} — fetching tracks…\n` +
+        `⚠ No token detected – paste the full Flymaster URL (with ?token=…) for best results.`,
+      );
+    } else {
+      setStatus(`Found ${pilotList.length} pilot${pilotList.length !== 1 ? 's' : ''} — fetching tracks…`);
+    }
 
     // 3 – Track data: look back 48 h from server time so yesterday's events
     //     are covered too, and the lookback is synchronised with the server clock.
@@ -337,8 +344,10 @@ async function loadFlymasterGroup(urlOrId, manualToken = '') {
     if (added === 0) {
       setStatus(
         `Pilots loaded but no track data found.\n` +
-        `If this is a private group, enter the access token above.\n` +
-        `For full replay, download IGC files from the group page and upload them here.`,
+        `Track data requires a group access token.\n` +
+        `Open your Flymaster event in a browser, copy the full URL\n` +
+        `(it must include ?token=…), and paste it in the field above.\n` +
+        `Alternatively, download IGC files from the group page and upload them here.`,
         'error',
       );
     } else {
