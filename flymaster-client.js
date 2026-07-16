@@ -3,8 +3,12 @@
 /**
  * Flymaster LiveTracking API client.
  *
- * All API calls go through the Netlify proxy function when the app is hosted
- * on Netlify (/.netlify/functions/flymaster-proxy), which avoids CORS.
+ * All API calls go through a server-side proxy when available, bypassing CORS.
+ * Three proxy strategies are supported (see proxyType()):
+ *   netlify – Netlify serverless function (/.netlify/functions/flymaster-proxy)
+ *   nginx   – nginx reverse proxy  (/api/lb/ → lb.flymaster.net,
+ *                                   /api/lt/ → lt.flymaster.net)
+ *   direct  – browser calls Flymaster directly (GitHub Pages; may be CORS-blocked)
  * When running locally or on GitHub Pages the client tries direct calls;
  * most browsers will block these due to CORS on lb/lt.flymaster.net.
  *
@@ -27,22 +31,58 @@ const FlymasterClient = (() => {
   const LT = 'https://lt.flymaster.net';
 
   // Use the Netlify proxy when available (avoids CORS)
-  const PROXY = '/.netlify/functions/flymaster-proxy';
+  const NETLIFY_PROXY = '/.netlify/functions/flymaster-proxy';
 
-  // Use the Netlify proxy when the app is hosted on a Netlify domain.
-  // On GitHub Pages or a plain local server the browser calls Flymaster
-  // directly, which may be blocked by CORS.
-  function useProxy() {
+  // Nginx reverse-proxy paths used when the app is served by the Docker/nginx
+  // container.  Requests to /api/lb/... and /api/lt/... are forwarded
+  // server-side to lb.flymaster.net and lt.flymaster.net respectively.
+  const NGINX_LB = '/api/lb';
+  const NGINX_LT = '/api/lt';
+
+  /**
+   * Determine which proxy strategy to use for the current deployment:
+   *   'netlify' – Netlify serverless function (/.netlify/functions/flymaster-proxy)
+   *   'nginx'   – nginx reverse proxy (/api/lb/, /api/lt/)
+   *   'direct'  – no proxy (browser calls Flymaster directly; may be CORS-blocked)
+   *
+   * Detection rules (most-specific first):
+   *   • Netlify domains (.netlify.app / .netlify.com) → 'netlify'
+   *   • GitHub Pages (.github.io)                    → 'direct' (no server-side proxy)
+   *   • Everything else (localhost, custom domain)    → 'nginx'  (Docker / self-hosted)
+   */
+  function proxyType() {
     const h = window.location.hostname;
     // Anchor to full domain boundary (leading dot) to prevent prefix spoofing
     // e.g. "evilnetlify.com".endsWith("netlify.com") would match without the dot.
-    return h.endsWith('.netlify.app') || h.endsWith('.netlify.com');
+    if (h.endsWith('.netlify.app') || h.endsWith('.netlify.com')) return 'netlify';
+    if (h.endsWith('.github.io'))                                  return 'direct';
+    return 'nginx';
   }
 
   async function apiFetch(url) {
-    const target = useProxy()
-      ? `${PROXY}?url=${encodeURIComponent(url)}`
-      : url;
+    let target;
+    const pt = proxyType();
+
+    if (pt === 'netlify') {
+      target = `${NETLIFY_PROXY}?url=${encodeURIComponent(url)}`;
+    } else if (pt === 'nginx') {
+      // Use URL origin comparison (not startsWith) so that a host like
+      // lb.flymaster.net.evil.com is never matched.
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === LB) {
+          target = NGINX_LB + parsed.pathname + parsed.search;
+        } else if (parsed.origin === LT) {
+          target = NGINX_LT + parsed.pathname + parsed.search;
+        } else {
+          target = url;
+        }
+      } catch {
+        target = url;  // malformed URL – fall through to direct
+      }
+    } else {
+      target = url;
+    }
 
     const resp = await fetch(target, {
       headers: { 'Accept': 'application/json' },
@@ -133,5 +173,5 @@ const FlymasterClient = (() => {
     }
   }
 
-  return { parseGroupId, getServerTime, getPilots, getLiveData, tryGetLiveData };
+  return { parseGroupId, proxyType, getServerTime, getPilots, getLiveData, tryGetLiveData };
 })();
