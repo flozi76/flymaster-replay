@@ -41,12 +41,16 @@ function flush() {
   return new Promise(resolve => setImmediate(resolve));
 }
 
-test('app bootstraps and loads a Flymaster group track', async () => {
-  const source = fs.readFileSync(
-    path.resolve(__dirname, '..', 'app.js'),
-    'utf8',
-  );
+const appSource = fs.readFileSync(
+  path.resolve(__dirname, '..', 'app.js'),
+  'utf8',
+);
 
+/**
+ * Create a vm context running app.js with overrideable FlymasterClient stubs.
+ * Returns { elements, domReadyHandlers }.
+ */
+function makeAppContext(flymasterClientOverrides = {}) {
   const domReadyHandlers = [];
   const elements = {
     map: new ElementMock(),
@@ -68,8 +72,6 @@ test('app bootstraps and loads a Flymaster group track', async () => {
   };
   elements['group-url'].value = 'https://lt.flymaster.net/bs.php?grp=7784';
   elements['group-token'].value = '';
-
-  let mapInitCount = 0;
 
   const context = vm.createContext({
     console,
@@ -108,12 +110,10 @@ test('app bootstraps and loads a Flymaster group track', async () => {
           { time: 130, lat: 47.2, lon: 10.2, alt: 1250 },
         ],
       }),
+      ...flymasterClientOverrides,
     },
     L: {
-      map: () => {
-        mapInitCount += 1;
-        return { fitBounds: () => {} };
-      },
+      map: () => ({ fitBounds: () => {} }),
       tileLayer: () => ({ addTo: () => {} }),
       polyline: (latLngs = []) => ({
         _latLngs: latLngs,
@@ -133,11 +133,15 @@ test('app bootstraps and loads a Flymaster group track', async () => {
     },
   });
 
-  vm.runInContext(source, context, { filename: 'app.js' });
-  assert.equal(domReadyHandlers.length, 1);
+  vm.runInContext(appSource, context, { filename: 'app.js' });
+  return { elements, domReadyHandlers };
+}
 
+test('app bootstraps and loads a Flymaster group track', async () => {
+  const { elements, domReadyHandlers } = makeAppContext();
+
+  assert.equal(domReadyHandlers.length, 1);
   domReadyHandlers[0]();
-  assert.equal(mapInitCount, 1);
 
   elements['btn-load-group'].trigger('click');
   await flush();
@@ -147,4 +151,44 @@ test('app bootstraps and loads a Flymaster group track', async () => {
   assert.equal(elements['pilot-count'].textContent, '1 pilot');
   assert.match(elements['live-status'].textContent, /Loaded 1 pilot/);
   assert.equal(elements['btn-load-group'].disabled, false);
+});
+
+test('app shows token warning when loading without a token', async () => {
+  const statusHistory = [];
+  const { elements, domReadyHandlers } = makeAppContext();
+
+  // Intercept all status updates via the live-status element setter
+  Object.defineProperty(elements['live-status'], 'textContent', {
+    set(v) { statusHistory.push(v); },
+    get() { return statusHistory[statusHistory.length - 1] ?? ''; },
+    configurable: true,
+  });
+
+  domReadyHandlers[0]();
+  elements['btn-load-group'].trigger('click');
+  await flush(); // getServerTime
+  await flush(); // getPilots + intermediate setStatus (with token warning)
+  await flush(); // tryGetLiveData + final setStatus
+
+  // At least one intermediate status should contain the token warning
+  assert.ok(
+    statusHistory.some(s => /token/i.test(s) && !/Loaded/i.test(s)),
+    `Expected a token-related warning before final status; got: ${JSON.stringify(statusHistory)}`,
+  );
+});
+
+test('app shows token-requirement guidance when no track data is found', async () => {
+  const { elements, domReadyHandlers } = makeAppContext({
+    tryGetLiveData: async () => ({}),  // all strategies return no tracks
+  });
+
+  domReadyHandlers[0]();
+  elements['btn-load-group'].trigger('click');
+  await flush();
+  await flush();
+  await flush();
+
+  const status = elements['live-status'].textContent;
+  assert.match(status, /no track data/i, 'should mention "no track data"');
+  assert.match(status, /token/i, 'should mention "token" as the fix');
 });
